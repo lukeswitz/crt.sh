@@ -2,73 +2,64 @@
 
 echo "
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|      ..| search crt.sh v1.1 |..     |
+|      ..| search crt.sh v1.1b1 |..   |
 +   site : crt.sh Certificate Search  +
 |            Twitter: az7rb           |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 	"
 	
-	Help()
-{
-   # Display Help
-   echo "Options:"
-   echo ""
-   echo "-h     Help"
-   echo "-d     Search Domain Name       | Example: $0 -d hackerone.com"
-   echo "-o     Search Organization Name | Example: $0 -o hackerone+inc"
-   echo ""
+# Helper function for printing usage
+usage() {
+    echo "Usage: $0 [-d domain_name | -o organization_name]"
+    echo "Options:"
+    echo "  -d  Search Domain Name       (e.g., $0 -d hackerone.com)"
+    echo "  -o  Search Organization Name (e.g., $0 -o 'hackerone inc')"
+    echo "  -h  Show this help message"
+    exit 1
 }
 
-	# Request the Search  with Domain Name
-	Domain() {
-	requestsearch="$(curl -s "https://crt.sh?q=%.$req&output=json")"
-		 
-			 echo $requestsearch > req.txt
-			 cat req.txt | jq ".[].common_name,.[].name_value"| cut -d'"' -f2 | sed 's/\\n/\n/g' | sed 's/\*.//g'| sed -r 's/([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,4})//g' |sort | uniq > output/domain.$req.txt
-			 rm req.txt
-			 echo ""
-			 cat output/domain.$req.txt
-			 echo ""
-			 echo -e "\e[32m[+]\e[0m Total Save will be \e[31m"$(cat output/domain.$req.txt | wc -l)"\e[0m Domain only"
-			 echo -e "\e[32m[+]\e[0m Output saved in output/domain.$req.txt"
-}		 
-    # Request the Search with Organization Name
-	Organization() {
-	requestsearch="$(curl -s "https://crt.sh?q=$req&output=json")"
-		 
-			 echo $requestsearch > req.txt
-			 cat req.txt | jq ".[].common_name"| cut -d'"' -f2 | sed 's/\\n/\n/g' | sed 's/\*.//g'| sed -r 's/([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,4})//g' |sort | uniq > output/org.$req.txt
-			 rm req.txt
-			 echo ""
-			 cat output/org.$req.txt
-			 echo ""
-			 echo -e "\e[32m[+]\e[0m Total Save will be \e[31m"$(cat output/org.$req.txt | wc -l)"\e[0m Domain only"
-			 echo -e "\e[32m[+]\e[0m Output saved in output/org.$req.txt"
-}	
+# Function for processing crt.sh response
+process_response() {
+    local req=$1
+    local type=$2
+    local response=$(curl -s "https://crt.sh?q=%.$req&output=json")
 
-if [ -z $1 ]
-        then
-                Help
-                exit
-        else
-                req=$2
-                
+    if [[ -z "$response" ]]; then
+        echo "No data received from crt.sh. Please check your query or try again later."
+        exit 1
+    fi
+
+    local output_file="output/${type}.$req.txt"
+    echo "$response" | \
+        jq -r '.[] | .common_name, .name_value' | \
+        sed -e 's/\\n/\n/g' -e 's/\*.//g' -e 's/\([A-Za-z0-9._%+-]*@[A-Za-z0-9.-]*\.[A-Za-z]{2,4}\)//g' | \
+        sort -u > "$output_file"
+
+    cat "$output_file"
+    echo ""
+    echo -e "\e[32m[+]\e[0m Total domains saved: \e[31m$(wc -l < "$output_file")\e[0m"
+    echo -e "\e[32m[+]\e[0m Output saved in $output_file"
+}
+
+# Check if any option is passed
+if [[ -z "$1" ]]; then
+    usage
 fi
 
-while getopts "h|d|o|" option; do
-   case $option in
-      h) # display Help
-         Help
-         ;;
-      d) # Search Domain Name
-	 Domain
-         ;;
-      o) # Search Organization Name
-	 Organization
-         ;;
-     *) # Invalid option
-          Help
-          ;;
-		 
-   esac
+# Ensure the output directory exists
+mkdir -p output
+
+# Parse options
+while getopts "d:o:h" opt; do
+    case ${opt} in
+        d)
+            process_response "$OPTARG" "domain"
+            ;;
+        o)
+            process_response "$OPTARG" "org"
+            ;;
+        h|*)
+            usage
+            ;;
+    esac
 done
